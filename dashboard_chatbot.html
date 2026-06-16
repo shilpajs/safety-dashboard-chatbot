@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>US Road Safety Assistant</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; background: transparent; }
+
+  .widget {
+    display: flex; flex-direction: column;
+    height: 100%; max-height: 100vh;
+    background: #FFFFFF;
+    border: 1px solid #E8E8E8; border-radius: 12px;
+    overflow: hidden;
+  }
+
+  /* Header */
+  .head {
+    background: #110F48; color: #fff;
+    padding: 14px 18px; display: flex; align-items: center; gap: 12px;
+    flex-shrink: 0;
+  }
+  .head .avatar {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: #185FA5; display: flex; align-items: center;
+    justify-content: center; font-size: 20px; flex-shrink: 0;
+  }
+  .head .title { font-size: 15px; font-weight: 600; }
+  .head .status { font-size: 11px; color: #9BB3D4; display: flex; align-items: center; gap: 5px; margin-top: 2px; }
+  .head .dot { width: 7px; height: 7px; border-radius: 50%; background: #2ECC71; display: inline-block; }
+  .head .accent { height: 3px; background: #E63A54; }
+
+  /* Chat area */
+  .chat { flex: 1; overflow-y: auto; padding: 16px; background: #F5F6FA; }
+  .row { display: flex; margin-bottom: 12px; }
+  .row.user { justify-content: flex-end; }
+  .bubble {
+    max-width: 82%; padding: 10px 14px; border-radius: 14px;
+    font-size: 13px; line-height: 1.55; white-space: pre-wrap;
+  }
+  .bubble.ai { background: #fff; color: #252423; border: 1px solid #E8E8E8; border-top-left-radius: 4px; }
+  .bubble.user { background: #185FA5; color: #fff; border-top-right-radius: 4px; }
+  .bubble strong { font-weight: 600; }
+  .bubble .b-title { color: #185FA5; font-weight: 600; display: block; margin-bottom: 3px; }
+  .row.user .bubble .b-title { color: #fff; }
+
+  /* Typing dots */
+  .typing { display: flex; gap: 4px; padding: 12px 14px; }
+  .typing span {
+    width: 7px; height: 7px; border-radius: 50%; background: #B0B4C0;
+    animation: blink 1.3s infinite both;
+  }
+  .typing span:nth-child(2) { animation-delay: .2s; }
+  .typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%,80%,100%{opacity:.3} 40%{opacity:1} }
+
+  /* Suggestion chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 16px 10px; background: #F5F6FA; flex-shrink: 0; }
+  .chip {
+    background: #EEF3FA; color: #185FA5; border: 1px solid #185FA5;
+    border-radius: 16px; padding: 5px 13px; font-size: 11.5px;
+    cursor: pointer; transition: all .15s; user-select: none;
+  }
+  .chip:hover { background: #185FA5; color: #fff; }
+
+  /* Input bar */
+  .inbar {
+    display: flex; gap: 8px; padding: 12px 14px;
+    border-top: 1px solid #E8E8E8; background: #fff; flex-shrink: 0;
+  }
+  .inbar input {
+    flex: 1; padding: 11px 15px; border: 1px solid #E8E8E8;
+    border-radius: 22px; font-size: 13px; font-family: inherit; outline: none;
+  }
+  .inbar input:focus { border-color: #185FA5; }
+  .inbar button {
+    background: #185FA5; color: #fff; border: none; border-radius: 50%;
+    width: 42px; height: 42px; cursor: pointer; font-size: 17px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    transition: background .15s;
+  }
+  .inbar button:hover { background: #134d85; }
+
+  .chat::-webkit-scrollbar { width: 8px; }
+  .chat::-webkit-scrollbar-thumb { background: #cdd2dd; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="widget">
+  <div class="head">
+    <div class="avatar">&#128640;</div>
+    <div>
+      <div class="title">US Road Safety Assistant</div>
+      <div class="status"><span class="dot"></span> Online &middot; Ask me about the dashboard</div>
+    </div>
+  </div>
+  <div class="accent"></div>
+
+  <div class="chat" id="chat"></div>
+
+  <div class="chips" id="chips"></div>
+
+  <div class="inbar">
+    <input id="inp" placeholder="Ask about the dashboard..." autocomplete="off" />
+    <button id="send" title="Send">&#10148;</button>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   KNOWLEDGE BASE — all answers about the dashboard live here.
+   Pure keyword matching, no network calls, works fully offline.
+   ============================================================ */
+const KB = [
+  {
+    keys: ["hello","hi","hey","start","help","what can you do"],
+    title: "Hi there!",
+    answer: "I'm your US Road Safety dashboard assistant. I can explain the pages, the KPIs, the data model, and how to use the filters. Try one of the suggestions below, or ask me anything about the dashboard."
+  },
+  {
+    keys: ["overview","accident overview","main page","kpi page","home metrics"],
+    title: "Accident Overview page",
+    answer: "This is the main summary page. It shows 5 KPI cards (Total Accidents, Critical Accidents, Avg Duration, Safety Score, Risk Index), plus charts for accidents by year, by hour, severity distribution, and by state. Each KPI has a reference label beneath it for context."
+  },
+  {
+    keys: ["geographic","geography","map","state","city","location","where"],
+    title: "Geographic Analysis page",
+    answer: "Shows accidents by location. Includes a US state shape map (darker = more accidents), top states and top cities bar charts, and KPIs like Most/Least Accidents State, Avg Risk Score, Adverse Weather % and Total Distance Affected. California leads with about 1.6M accidents; the top 3 states make up roughly 40% of all records."
+  },
+  {
+    keys: ["weather","rain","snow","fog","adverse","visibility","condition"],
+    title: "Weather Impact page",
+    answer: "Analyses how weather affects accidents. Charts cover accidents by weather group, by condition, adverse vs non-adverse, and visibility vs severity. KPIs include Weather Impact Score, Rainy Day Accidents, Clear Weather Accidents, Avg Severity and Avg Visibility. Around 30% of accidents occur in adverse weather."
+  },
+  {
+    keys: ["temporal","time","hour","day","month","season","when","trend","weekend"],
+    title: "Temporal Patterns page",
+    answer: "Shows when accidents happen. Charts: accidents by hour (peaks at 7-9 AM and 4-6 PM), by day of week, monthly trend by year, and by season. KPIs include Peak Hours Accidents, Weekend Accidents, Night Accident Rate, Winter Rate and Year-over-Year growth."
+  },
+  {
+    keys: ["severity","critical","risk","safety score","dangerous","fatal"],
+    title: "Severity Analysis page",
+    answer: "Breaks down accidents by severity (levels 1-4, where 4 is critical). Includes a severity distribution donut, severity-by-year stacked bar, average duration by severity, and a Safety Score gauge. Low severity dominates; critical accidents are roughly 2.4% of the total."
+  },
+  {
+    keys: ["total accidents","how many","record count","number of accidents","dataset size"],
+    title: "Total Accidents",
+    answer: "The dataset holds about 7.7 million accident records covering 2016 to 2023 across 49 US states. 'Total Accidents' is the base measure that every percentage and rate is calculated from."
+  },
+  {
+    keys: ["safety score"],
+    title: "Safety Score",
+    answer: "Safety Score (0-100) is the percentage of low-severity (level 1) accidents multiplied by 100. A score of 100 means every accident was minor. The national benchmark sits around 65. It's the inverse of the Risk Index."
+  },
+  {
+    keys: ["risk index"],
+    title: "Risk Index",
+    answer: "Risk Index (0-100) is the share of high-severity accidents (levels 3 and 4) multiplied by 100. Higher means more dangerous. Below 15 is low, 15-25 medium, above 25 high. Safety Score and Risk Index roughly add up to 100."
+  },
+  {
+    keys: ["critical","level 4","most severe"],
+    title: "Critical Accidents",
+    answer: "Critical Accidents are severity level 4 — the highest impact, with the longest road closures. They make up about 2.4% of all accidents. The Critical Accidents % reference label shows this share."
+  },
+  {
+    keys: ["duration","how long","minutes","road closure"],
+    title: "Accident Duration",
+    answer: "Average Duration shows how long accidents affect the road, in minutes. The Median Duration reference label helps spot outliers — if the median is much lower than the average, a few very long accidents are pulling the average up. Higher severity accidents last significantly longer."
+  },
+  {
+    keys: ["weather impact score"],
+    title: "Weather Impact Score",
+    answer: "A compound metric: (Adverse Weather % x Critical Accident count) / Total, scaled to 100. It captures how strongly adverse weather is linked to severe accidents."
+  },
+  {
+    keys: ["slicer","filter","select","narrow","drill"],
+    title: "Using the filters",
+    answer: "Each page has slicers for State, Severity and Year (and Date/Weather on some pages). Selecting any value updates every visual on that page instantly. You can multi-select states, and use the eraser icon on a slicer to clear it."
+  },
+  {
+    keys: ["data model","schema","tables","star schema","relationship","structure"],
+    title: "Data Model",
+    answer: "It's a star schema: one fact table (FactAccidents, ~7.7M rows) linked to four dimensions — DimTime, DimLocation, DimWeather and DimSeverity. Relationships join on TimeId, LocationId, WeatherId and SeverityId."
+  },
+  {
+    keys: ["measure","dax","calculation","how calculated","formula"],
+    title: "Measures",
+    answer: "The model has 50+ DAX measures — counts, percentages, rates, time-intelligence (MTD, YTD, YoY) and dynamic labels. Examples: TotalAccidents, CriticalAccidentsPct, SafetyScore100, RiskIndex, WeatherImpactScore, PeakHoursAccidents and YoYGrowth."
+  },
+  {
+    keys: ["data source","kaggle","where from","origin","author"],
+    title: "Data Source",
+    answer: "The data comes from the Kaggle US Accidents dataset by Sobhan Moosavi. It was processed into a star schema using Python and loaded into Power BI. The dashboard was built by Pearl Innovations."
+  },
+  {
+    keys: ["peak hours","rush hour","busiest time"],
+    title: "Peak Hours",
+    answer: "Peak (rush) hours are 7-9 AM and 4-6 PM. These windows have the highest accident concentration. The Peak Hours Accidents KPI and the hourly line chart on the Temporal Patterns page show this clearly."
+  },
+  {
+    keys: ["which state","most accidents state","highest state","top state"],
+    title: "Highest-accident state",
+    answer: "California has the most accidents (about 1.6M), followed by Florida and Texas. Together the top 3 states account for roughly 40% of all records. See the Most Accidents State KPI on Geographic Analysis."
+  },
+  {
+    keys: ["technology","tech stack","built with","tools"],
+    title: "Technical Stack",
+    answer: "Power BI Desktop (PBIP format) for the report, DAX for 50+ measures, Python for the data pipeline and report scripting, and a star-schema model with one fact and four dimension tables."
+  }
+];
+
+const FALLBACK = "I can answer questions about the dashboard's pages (Overview, Geographic, Weather, Temporal, Severity), the KPIs (Safety Score, Risk Index, Critical Accidents, etc.), the data model, and how to use the filters. Could you rephrase, or tap one of the suggestions below?";
+
+const SUGGESTIONS = [
+  "What does the Overview page show?",
+  "Explain the Safety Score",
+  "Which state has the most accidents?",
+  "What are peak accident hours?",
+  "How do the filters work?",
+  "What is the data model?"
+];
+
+/* ---------- Matching engine ---------- */
+function findAnswer(text) {
+  const q = text.toLowerCase();
+  let best = null, bestScore = 0;
+  for (const item of KB) {
+    let score = 0;
+    for (const k of item.keys) {
+      if (q.includes(k)) score += k.split(" ").length * 2; // multi-word keys weigh more
+    }
+    if (score > bestScore) { bestScore = score; best = item; }
+  }
+  return bestScore > 0 ? best : null;
+}
+
+/* ---------- UI ---------- */
+const chat  = document.getElementById("chat");
+const chips = document.getElementById("chips");
+const inp   = document.getElementById("inp");
+
+function addBubble(text, who, title) {
+  const row = document.createElement("div");
+  row.className = "row " + who;
+  const b = document.createElement("div");
+  b.className = "bubble " + who;
+  b.innerHTML = (title ? "<span class='b-title'>" + title + "</span>" : "") + text;
+  row.appendChild(b);
+  chat.appendChild(row);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function showTyping() {
+  const row = document.createElement("div");
+  row.className = "row ai"; row.id = "typingRow";
+  row.innerHTML = "<div class='bubble ai'><div class='typing'><span></span><span></span><span></span></div></div>";
+  chat.appendChild(row);
+  chat.scrollTop = chat.scrollHeight;
+}
+function hideTyping() {
+  const t = document.getElementById("typingRow");
+  if (t) t.remove();
+}
+
+function respond(q) {
+  showTyping();
+  setTimeout(() => {
+    hideTyping();
+    const hit = findAnswer(q);
+    if (hit) addBubble(hit.answer, "ai", hit.title);
+    else     addBubble(FALLBACK, "ai", "Not sure about that one");
+  }, 450 + Math.random() * 350);
+}
+
+function send(text) {
+  const q = (text || inp.value).trim();
+  if (!q) return;
+  addBubble(q, "user");
+  inp.value = "";
+  respond(q);
+}
+
+document.getElementById("send").onclick = () => send();
+inp.addEventListener("keydown", e => { if (e.key === "Enter") send(); });
+
+SUGGESTIONS.forEach(s => {
+  const c = document.createElement("div");
+  c.className = "chip"; c.textContent = s;
+  c.onclick = () => send(s);
+  chips.appendChild(c);
+});
+
+/* Greeting */
+window.addEventListener("load", () => {
+  addBubble("Hi! I'm your US Road Safety dashboard assistant. Ask me about any page, KPI, or how to use the filters.", "ai", "Welcome \uD83D\uDC4B");
+});
+</script>
+</body>
+</html>
